@@ -1,54 +1,112 @@
 import streamlit as st
 from huggingface_hub import InferenceClient
 from gtts import gTTS
+import tempfile
 import os
+
+# =========================
+# CONFIG
+# =========================
 
 HF_TOKEN = os.getenv("HF_TOKEN")
 
 client = InferenceClient(token=HF_TOKEN)
 
-st.title("🎙️ AI Podcast Generator (HF Hub Powered)")
+st.set_page_config(
+    page_title="AI Podcast Generator",
+    layout="centered"
+)
 
-topic = st.text_input("Enter podcast topic")
+st.title("🎙️ AI Podcast Generator")
+
+st.info(
+    "Enter a topic and generate a podcast script with optional voice narration."
+)
+
+# =========================
+# INPUT
+# =========================
+
+topic = st.text_input(
+    "Enter podcast topic"
+)
+
+# =========================
+# GENERATE PODCAST
+# =========================
 
 if st.button("Generate Podcast"):
 
     if not topic.strip():
-        st.warning("Please enter a topic")
-        st.stop()
 
-    prompt = f"""
-Create a 2-minute engaging podcast script.
-
-Topic: {topic}
-
-Make it:
-- conversational
-- engaging
-- simple English
-"""
-
-    with st.spinner("Generating script..."):
-
-        response = client.text_generation(
-            model="google/flan-t5-large",
-            prompt=prompt,
-            max_new_tokens=300
+        st.warning(
+            "Please enter a topic."
         )
 
-    st.subheader("📜 Script")
-    st.write(response)
+    elif not HF_TOKEN:
 
-    # =========================
-    # TEXT TO SPEECH
-    # =========================
+        st.error(
+            "HF_TOKEN secret is missing."
+        )
 
-    try:
-        tts = gTTS(response)
-        tts.save("podcast.mp3")
+    else:
 
-        st.subheader("🔊 Audio")
-        st.audio("podcast.mp3")
+        with st.spinner(
+            "Generating podcast script..."
+        ):
 
-    except Exception as e:
-        st.error(f"TTS error: {e}")
+            try:
+
+                prompt = f"""
+Create a 2-minute podcast script about:
+
+{topic}
+
+Requirements:
+- Conversational tone
+- Engaging introduction
+- Educational content
+- Clear conclusion
+- Suitable for students
+"""
+
+                response = client.chat.completions.create(
+                    model="meta-llama/Llama-3.2-1B-Instruct",
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": prompt
+                        }
+                    ],
+                    max_tokens=600,
+                    temperature=0.7
+                )
+
+                script = response.choices[0].message.content
+
+                st.subheader("📜 Podcast Script")
+
+                st.write(script)
+
+                # =========================
+                # TEXT TO SPEECH
+                # =========================
+
+                tts = gTTS(script)
+
+                with tempfile.NamedTemporaryFile(
+                    delete=False,
+                    suffix=".mp3"
+                ) as fp:
+
+                    tts.save(fp.name)
+
+                    st.subheader("🎧 Podcast Audio")
+
+                    st.audio(fp.name)
+
+            except Exception as e:
+
+                st.error(
+                    f"System Response: {e}"
+                )
